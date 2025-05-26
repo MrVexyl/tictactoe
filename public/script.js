@@ -41,7 +41,8 @@ function joinOnline(symbol) {
   });
 
   socket.on("errorMsg", (msg) => {
-    alert(msg);
+    alert("Fehler: " + msg);
+    console.error("SERVER ERROR:", msg);
     socket.disconnect();
     socket = null;
   });
@@ -132,3 +133,4 @@ function checkWinner() {
     info.textContent = "Unentschieden!";
   }
 }
+
