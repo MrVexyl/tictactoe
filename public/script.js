@@ -3,24 +3,54 @@ let currentTurn = "X";
 let board = Array(9).fill(null);
 let socket = null;
 let isOnline = false;
+let currentRoom = null;
 
 const boardDiv = document.getElementById("board");
 const info = document.getElementById("info");
 const gameArea = document.getElementById("gameArea");
 const startMenu = document.getElementById("startMenu");
+const roomInput = document.getElementById("roomInput");
 
-// === Startoptionen ===
-function startOnline() {
+function joinOnline(symbol) {
+  const room = roomInput.value.trim();
+  if (!room) {
+    alert("Bitte gib einen Raumnamen ein.");
+    return;
+  }
+
+  socket = io();
   isOnline = true;
-  startMenu.style.display = "none";
-  gameArea.style.display = "block";
-  startOnlineMode();
+  currentRoom = room;
+  playerSymbol = symbol;
+
+  socket.emit("joinRoom", { room, symbol });
+
+  socket.on("joined", (data) => {
+    info.textContent = `Du bist Spieler ${playerSymbol} im Raum ${room}`;
+    gameArea.style.display = "block";
+    startMenu.style.display = "none";
+  });
+
+  socket.on("updateBoard", ({ board: newBoard, currentTurn: turn }) => {
+    board = newBoard;
+    currentTurn = turn;
+    renderBoard();
+    info.textContent = currentTurn === playerSymbol
+      ? "Du bist dran!"
+      : "Gegner ist dran...";
+  });
+
+  socket.on("errorMsg", (msg) => {
+    alert(msg);
+    socket.disconnect();
+    socket = null;
+  });
 }
 
 function startAI() {
   isOnline = false;
-  startMenu.style.display = "none";
   gameArea.style.display = "block";
+  startMenu.style.display = "none";
   resetGame();
   renderBoard();
   info.textContent = "Du spielst gegen die KI!";
@@ -37,34 +67,36 @@ function backToMenu() {
   gameArea.style.display = "none";
 }
 
-// === Multiplayer-Logik ===
-function startOnlineMode() {
-  socket = io();
-
-  socket.on("playerSymbol", (symbol) => {
-    playerSymbol = symbol;
-    info.textContent = "Du spielst als: " + symbol;
-  });
-
-  socket.on("playerCount", (count) => {
-    if (count < 2) info.textContent = "Warte auf zweiten Spieler...";
-  });
-
-  socket.on("updateBoard", ({ board: newBoard, currentTurn: turn }) => {
-    board = newBoard;
-    currentTurn = turn;
-    renderBoard();
-    info.textContent = currentTurn === playerSymbol
-      ? "Du bist dran!"
-      : "Gegner ist dran...";
-  });
-
-  socket.on("full", () => {
-    info.textContent = "Spiel ist voll.";
+function renderBoard() {
+  boardDiv.innerHTML = "";
+  board.forEach((cell, i) => {
+    const div = document.createElement("div");
+    div.classList.add("cell");
+    div.textContent = cell || "";
+    div.addEventListener("click", () => {
+      if (isOnline) {
+        if (currentTurn === playerSymbol && !board[i]) {
+          socket.emit("makeMove", { room: currentRoom, index: i });
+        }
+      } else {
+        handleAIClick(i);
+      }
+    });
+    boardDiv.appendChild(div);
   });
 }
 
-// === KI-Logik ===
+function resetGame() {
+  board = Array(9).fill(null);
+  currentTurn = "X";
+  if (isOnline && socket) {
+    socket.emit("resetGame", currentRoom);
+  } else {
+    renderBoard();
+    info.textContent = "Du spielst gegen die KI!";
+  }
+}
+
 function aiMove() {
   const empty = board.map((v, i) => v === null ? i : null).filter(i => i !== null);
   if (empty.length === 0) return;
@@ -82,35 +114,6 @@ function handleAIClick(i) {
   renderBoard();
   checkWinner();
   setTimeout(aiMove, 500);
-}
-
-// === Gemeinsame Funktionen ===
-function renderBoard() {
-  boardDiv.innerHTML = "";
-  board.forEach((cell, i) => {
-    const div = document.createElement("div");
-    div.classList.add("cell");
-    div.textContent = cell || "";
-    div.addEventListener("click", () => {
-      if (isOnline) {
-        socket.emit("makeMove", i);
-      } else {
-        handleAIClick(i);
-      }
-    });
-    boardDiv.appendChild(div);
-  });
-}
-
-function resetGame() {
-  board = Array(9).fill(null);
-  currentTurn = "X";
-  if (isOnline && socket) {
-    socket.emit("resetGame");
-  } else {
-    renderBoard();
-    info.textContent = "Du spielst gegen die KI!";
-  }
 }
 
 function checkWinner() {
