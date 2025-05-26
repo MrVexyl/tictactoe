@@ -7,9 +7,13 @@
 </head>
 <body>
   <h1>Tic Tac Toe</h1>
-  
+
   <div id="startMenu">
-    <button onclick="startOnline()">Online spielen</button>
+    <input id="roomInput" placeholder="Raumname eingeben" />
+    <br /><br />
+    <button onclick="joinOnline('X')">Als X beitreten</button>
+    <button onclick="joinOnline('O')">Als O beitreten</button>
+    <br /><br />
     <button onclick="startAI()">Gegen KI spielen</button>
   </div>
 
