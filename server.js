@@ -6,14 +6,15 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.static("public"));
 
-let rooms = {}; // z. B. { freund123: { X: socket.id, O: socket.id }, ... }
-let boards = {}; // z. B. { freund123: [null, null, ...] }
-let turns = {}; // z. B. { freund123: 'X' }
+let rooms = {};
+let boards = {};
+let turns = {};
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
   socket.on("joinRoom", ({ room, symbol }) => {
+    console.log(`Socket ${socket.id} möchte Raum ${room} als ${symbol} betreten`);
     if (!rooms[room]) {
       rooms[room] = { X: null, O: null };
       boards[room] = Array(9).fill(null);
