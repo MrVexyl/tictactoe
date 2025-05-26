@@ -6,47 +6,76 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.static("public"));
 
-let players = {};
-let board = Array(9).fill(null);
-let currentTurn = "X";
+let rooms = {}; // z. B. { freund123: { X: socket.id, O: socket.id }, ... }
+let boards = {}; // z. B. { freund123: [null, null, ...] }
+let turns = {}; // z. B. { freund123: 'X' }
 
 io.on("connection", (socket) => {
-  console.log("A user connected:", socket.id);
+  console.log("User connected:", socket.id);
 
-  if (Object.keys(players).length < 2) {
-    const symbol = Object.values(players).includes("X") ? "O" : "X";
-    players[socket.id] = symbol;
-    socket.emit("playerSymbol", symbol);
-    io.emit("playerCount", Object.keys(players).length);
-  } else {
-    socket.emit("full");
-    return;
-  }
+  socket.on("joinRoom", ({ room, symbol }) => {
+    if (!rooms[room]) {
+      rooms[room] = { X: null, O: null };
+      boards[room] = Array(9).fill(null);
+      turns[room] = "X";
+    }
 
-  socket.on("makeMove", (index) => {
-    if (players[socket.id] === currentTurn && board[index] === null) {
-      board[index] = currentTurn;
-      io.emit("updateBoard", { board, currentTurn });
-      currentTurn = currentTurn === "X" ? "O" : "X";
+    if (rooms[room][symbol]) {
+      socket.emit("errorMsg", `${symbol} ist bereits belegt in diesem Raum.`);
+      return;
+    }
+
+    rooms[room][symbol] = socket.id;
+    socket.join(room);
+    socket.emit("joined");
+
+    io.to(room).emit("updateBoard", {
+      board: boards[room],
+      currentTurn: turns[room],
+    });
+  });
+
+  socket.on("makeMove", ({ room, index }) => {
+    if (!rooms[room]) return;
+    const symbol = rooms[room].X === socket.id ? "X" : rooms[room].O === socket.id ? "O" : null;
+    if (!symbol || boards[room][index] !== null || turns[room] !== symbol) return;
+
+    boards[room][index] = symbol;
+    turns[room] = symbol === "X" ? "O" : "X";
+
+    io.to(room).emit("updateBoard", {
+      board: boards[room],
+      currentTurn: turns[room],
+    });
+  });
+
+  socket.on("resetGame", (room) => {
+    if (boards[room]) {
+      boards[room] = Array(9).fill(null);
+      turns[room] = "X";
+      io.to(room).emit("updateBoard", {
+        board: boards[room],
+        currentTurn: turns[room],
+      });
     }
   });
 
-  socket.on("resetGame", () => {
-    board = Array(9).fill(null);
-    currentTurn = "X";
-    io.emit("updateBoard", { board, currentTurn });
-  });
-
   socket.on("disconnect", () => {
-    console.log("A user disconnected:", socket.id);
-    delete players[socket.id];
-    board = Array(9).fill(null);
-    currentTurn = "X";
-    io.emit("updateBoard", { board, currentTurn });
-    io.emit("playerCount", Object.keys(players).length);
+    for (const room in rooms) {
+      for (const symbol of ["X", "O"]) {
+        if (rooms[room][symbol] === socket.id) {
+          rooms[room][symbol] = null;
+        }
+      }
+      if (!rooms[room].X && !rooms[room].O) {
+        delete rooms[room];
+        delete boards[room];
+        delete turns[room];
+      }
+    }
   });
 });
 
 http.listen(PORT, () => {
-  console.log("Server listening on port", PORT);
+  console.log("Server läuft auf Port", PORT);
 });
