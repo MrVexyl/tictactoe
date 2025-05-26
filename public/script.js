@@ -1,44 +1,131 @@
-const socket = io();
 let playerSymbol = null;
+let currentTurn = "X";
+let board = Array(9).fill(null);
+let socket = null;
+let isOnline = false;
 
 const boardDiv = document.getElementById("board");
 const info = document.getElementById("info");
+const gameArea = document.getElementById("gameArea");
+const startMenu = document.getElementById("startMenu");
 
-function renderBoard(board) {
+// === Startoptionen ===
+function startOnline() {
+  isOnline = true;
+  startMenu.style.display = "none";
+  gameArea.style.display = "block";
+  startOnlineMode();
+}
+
+function startAI() {
+  isOnline = false;
+  startMenu.style.display = "none";
+  gameArea.style.display = "block";
+  resetGame();
+  renderBoard();
+  info.textContent = "Du spielst gegen die KI!";
+}
+
+function backToMenu() {
+  if (isOnline && socket) {
+    socket.disconnect();
+    socket = null;
+  }
+  board = Array(9).fill(null);
+  currentTurn = "X";
+  startMenu.style.display = "block";
+  gameArea.style.display = "none";
+}
+
+// === Multiplayer-Logik ===
+function startOnlineMode() {
+  socket = io();
+
+  socket.on("playerSymbol", (symbol) => {
+    playerSymbol = symbol;
+    info.textContent = "Du spielst als: " + symbol;
+  });
+
+  socket.on("playerCount", (count) => {
+    if (count < 2) info.textContent = "Warte auf zweiten Spieler...";
+  });
+
+  socket.on("updateBoard", ({ board: newBoard, currentTurn: turn }) => {
+    board = newBoard;
+    currentTurn = turn;
+    renderBoard();
+    info.textContent = currentTurn === playerSymbol
+      ? "Du bist dran!"
+      : "Gegner ist dran...";
+  });
+
+  socket.on("full", () => {
+    info.textContent = "Spiel ist voll.";
+  });
+}
+
+// === KI-Logik ===
+function aiMove() {
+  const empty = board.map((v, i) => v === null ? i : null).filter(i => i !== null);
+  if (empty.length === 0) return;
+  const move = empty[Math.floor(Math.random() * empty.length)];
+  board[move] = "O";
+  currentTurn = "X";
+  renderBoard();
+  checkWinner();
+}
+
+function handleAIClick(i) {
+  if (board[i] || currentTurn !== "X") return;
+  board[i] = "X";
+  currentTurn = "O";
+  renderBoard();
+  checkWinner();
+  setTimeout(aiMove, 500);
+}
+
+// === Gemeinsame Funktionen ===
+function renderBoard() {
   boardDiv.innerHTML = "";
   board.forEach((cell, i) => {
     const div = document.createElement("div");
     div.classList.add("cell");
     div.textContent = cell || "";
     div.addEventListener("click", () => {
-      socket.emit("makeMove", i);
+      if (isOnline) {
+        socket.emit("makeMove", i);
+      } else {
+        handleAIClick(i);
+      }
     });
     boardDiv.appendChild(div);
   });
 }
 
-socket.on("playerSymbol", (symbol) => {
-  playerSymbol = symbol;
-  info.textContent = "Du spielst als: " + symbol;
-});
-
-socket.on("playerCount", (count) => {
-  if (count < 2) {
-    info.textContent = "Warte auf zweiten Spieler...";
-  }
-});
-
-socket.on("updateBoard", ({ board, currentTurn }) => {
-  renderBoard(board);
-  info.textContent = currentTurn === playerSymbol
-    ? "Du bist dran!"
-    : "Gegner ist dran...";
-});
-
-socket.on("full", () => {
-  info.textContent = "Spiel ist voll.";
-});
-
 function resetGame() {
-  socket.emit("resetGame");
+  board = Array(9).fill(null);
+  currentTurn = "X";
+  if (isOnline && socket) {
+    socket.emit("resetGame");
+  } else {
+    renderBoard();
+    info.textContent = "Du spielst gegen die KI!";
+  }
+}
+
+function checkWinner() {
+  const lines = [
+    [0,1,2],[3,4,5],[6,7,8],
+    [0,3,6],[1,4,7],[2,5,8],
+    [0,4,8],[2,4,6]
+  ];
+  for (const [a,b,c] of lines) {
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+      info.textContent = board[a] + " gewinnt!";
+      return true;
+    }
+  }
+  if (!board.includes(null)) {
+    info.textContent = "Unentschieden!";
+  }
 }
